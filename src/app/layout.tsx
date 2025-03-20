@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
-
-const inter = Inter({ subsets: ["latin"] });
+import logo from './favicon.ico'
+import  "./globals.css";
 
 export const metadata: Metadata = {
   title: "Solace Candidate Assignment",
@@ -16,7 +14,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body>
+        <main className="app-container">
+          <img className="logo" src={logo.src} />
+          {children}
+        </main>
+      </body>
     </html>
   );
 }
