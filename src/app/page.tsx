@@ -1,53 +1,78 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { IAdvocate } from "./Models/Advocate";
 import Button from "./components/Button";
 import AdvocateList from "./components/AdvocateList";
 import styles from "./Home.module.css";
 
+const LIMIT = 30;
+
 const Home = () => {
   const [advocates, setAdvocates] = useState<IAdvocate[]>([]);
-  const [filteredAdvocates, setFilteredAdvocates] = useState<IAdvocate[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [page, setPage] = useState(1);
+  const [searchPage, setSearchPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const observer = useRef<IntersectionObserver | null>(null);
+
+  const fetchAdvocates = useCallback(
+    async (search: string, resetPage = false) => {
+      if (loading || (!hasMore && !search)) return;
+
+      setLoading(true);
+      try {
+        const newPage = resetPage ? 1 : search ? searchPage : page;
+        const response = await fetch(
+          `/api/advocates?page=${newPage}&limit=${LIMIT}&searchTerm=${search}`
+        );
+        const { data, total } = await response.json();
+
+        if (resetPage) {
+          setAdvocates(data);
+          setSearchPage(2);
+        } else {
+          setAdvocates((prev) => [...prev, ...data]);
+          search
+            ? setSearchPage((prev) => prev + 1)
+            : setPage((prev) => prev + 1);
+        }
+
+        setHasMore(advocates.length + data.length < total);
+      } catch (error) {
+        console.error("Error fetching advocates:", error);
+      }
+      setLoading(false);
+    },
+    [page, searchPage, hasMore, loading]
+  );
 
   useEffect(() => {
-    fetch("/api/advocates")
-      .then((response) => response.json())
-      .then((jsonResponse) => {
-        const { data } = jsonResponse;
-        if (!Array.isArray(data)) throw new Error("Invalid API response");
-
-        setAdvocates(data);
-        setFilteredAdvocates(data);
-      })
-      .catch((error) => console.error("Error fetching advocates:", error));
+    fetchAdvocates("");
   }, []);
 
-  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const term = e.target.value.toLowerCase();
-    setSearchTerm(term);
+  const lastAdvocateRef = useCallback(
+    (node: HTMLDivElement) => {
+      if (loading) return;
+      if (observer.current) observer.current.disconnect();
 
-    setFilteredAdvocates(
-      advocates.filter(
-        (advocate) =>
-          [
-            advocate.firstName,
-            advocate.lastName,
-            advocate.city,
-            advocate.degree,
-            advocate.yearsOfExperience.toString(),
-          ]
-            .filter(Boolean)
-            .some((field) => field.toLowerCase().includes(term)) ||
-          advocate.specialties.some((s) => s.toLowerCase().includes(term))
-      )
-    );
-  };
+      observer.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && hasMore) {
+          fetchAdvocates(searchTerm);
+        }
+      });
 
-  const onResetClick = () => {
-    setFilteredAdvocates(advocates);
-    setSearchTerm("");
+      if (node) observer.current.observe(node);
+    },
+    [loading, hasMore, searchTerm]
+  );
+
+  const handleSearchClick = () => {
+    setPage(1);
+    setSearchPage(1);
+    setHasMore(true);
+    fetchAdvocates(searchTerm, true);
   };
 
   return (
@@ -59,19 +84,24 @@ const Home = () => {
       </h2>
       <div className={styles.searchContainer}>
         <div className={styles.searchInput}>
-          <label htmlFor="searchTerm">Find an Advocate:</label>
+          <label htmlFor="searchTerm">What can we help with today?</label>
           <input
             name="searchTerm"
             className={styles.searchTerm}
             value={searchTerm}
-            onChange={onChange}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <Button text="Reset" type="primary" onClick={onResetClick} height="40px" width="100px" />
+        <Button
+          text="Search"
+          type="primary"
+          onClick={handleSearchClick}
+          height="40px"
+          width="100px"
+        />
       </div>
-      <br />
-      <br />
-      <AdvocateList advocates={filteredAdvocates} />
+      <AdvocateList advocates={advocates} lastAdvocateRef={lastAdvocateRef} />
+      {loading && <p className={styles.loading}>Loading...</p>}
     </main>
   );
 };
