@@ -1,91 +1,111 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { IAdvocate } from "./Models/Advocate";
+import Button from "./components/Button";
+import AdvocateList from "./components/AdvocateList";
+import styles from "./Home.module.css";
 
-export default function Home() {
-  const [advocates, setAdvocates] = useState([]);
-  const [filteredAdvocates, setFilteredAdvocates] = useState([]);
+const LIMIT = 30;
+
+const Home = () => {
+  const [advocates, setAdvocates] = useState<IAdvocate[]>([]);
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [activeSearchTerm, setActiveSearchTerm] = useState<string>("")
+  const [page, setPage] = useState(1);
+  const [searchPage, setSearchPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const observer = useRef<IntersectionObserver | null>(null);
+
+  const fetchAdvocates = useCallback(
+    async (search: string, resetPage = false) => {
+      if (loading || (!hasMore && !search)) return;
+
+      setLoading(true);
+      try {
+        const newPage = resetPage ? 1 : search ? searchPage : page;
+        const response = await fetch(
+          `/api/advocates?page=${newPage}&limit=${LIMIT}&searchTerm=${search}`
+        );
+        const { data } = await response.json();
+
+        if (resetPage) {
+          setAdvocates(data);
+          setSearchPage(2);
+        } else {
+          setAdvocates((prev) => [...prev, ...data]);
+          search
+            ? setSearchPage((prev) => prev + 1)
+            : setPage((prev) => prev + 1);
+        }
+
+        setHasMore(data.length === LIMIT);
+      } catch (error) {
+        console.error("Error fetching advocates:", error);
+      }
+      setLoading(false);
+    },
+    [page, searchPage, hasMore, loading]
+  );
 
   useEffect(() => {
-    console.log("fetching advocates...");
-    fetch("/api/advocates").then((response) => {
-      response.json().then((jsonResponse) => {
-        setAdvocates(jsonResponse.data);
-        setFilteredAdvocates(jsonResponse.data);
-      });
-    });
+    fetchAdvocates("");
   }, []);
 
-  const onChange = (e) => {
-    const searchTerm = e.target.value;
+  const lastAdvocateRef = useCallback(
+    (node: HTMLDivElement) => {
+      if (loading) return;
+      if (observer.current) observer.current.disconnect();
 
-    document.getElementById("search-term").innerHTML = searchTerm;
+      observer.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && hasMore) {
+          fetchAdvocates(activeSearchTerm);
+        }
+      });
 
-    console.log("filtering advocates...");
-    const filteredAdvocates = advocates.filter((advocate) => {
-      return (
-        advocate.firstName.includes(searchTerm) ||
-        advocate.lastName.includes(searchTerm) ||
-        advocate.city.includes(searchTerm) ||
-        advocate.degree.includes(searchTerm) ||
-        advocate.specialties.includes(searchTerm) ||
-        advocate.yearsOfExperience.includes(searchTerm)
-      );
-    });
+      if (node) observer.current.observe(node);
+    },
+    [loading, hasMore, searchTerm]
+  );
 
-    setFilteredAdvocates(filteredAdvocates);
-  };
-
-  const onClick = () => {
-    console.log(advocates);
-    setFilteredAdvocates(advocates);
+  const handleSearchClick = () => {
+    setActiveSearchTerm(searchTerm)
+    setPage(1);
+    setSearchPage(1);
+    setHasMore(true);
+    fetchAdvocates(searchTerm, true);
   };
 
   return (
-    <main style={{ margin: "24px" }}>
-      <h1>Solace Advocates</h1>
-      <br />
-      <br />
-      <div>
-        <p>Search</p>
-        <p>
-          Searching for: <span id="search-term"></span>
-        </p>
-        <input style={{ border: "1px solid black" }} onChange={onChange} />
-        <button onClick={onClick}>Reset Search</button>
+    <main className={styles.mainContainer}>
+      <h1 className={styles.header}>Don't navigate your health alone.</h1>
+      <h2 className={styles.subHeader}>
+        Find a care advocate who will help you unlock better healthcare by phone
+        or video—no matter what you need.
+      </h2>
+      <div className={styles.searchContainer}>
+        <div className={styles.searchInput}>
+          <label htmlFor="searchTerm">What can we help with today?</label>
+          <input
+            name="searchTerm"
+            className={styles.searchTerm}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <Button
+          text="Search"
+          type="primary"
+          onClick={handleSearchClick}
+          height="40px"
+          width="100px"
+        />
       </div>
-      <br />
-      <br />
-      <table>
-        <thead>
-          <th>First Name</th>
-          <th>Last Name</th>
-          <th>City</th>
-          <th>Degree</th>
-          <th>Specialties</th>
-          <th>Years of Experience</th>
-          <th>Phone Number</th>
-        </thead>
-        <tbody>
-          {filteredAdvocates.map((advocate) => {
-            return (
-              <tr>
-                <td>{advocate.firstName}</td>
-                <td>{advocate.lastName}</td>
-                <td>{advocate.city}</td>
-                <td>{advocate.degree}</td>
-                <td>
-                  {advocate.specialties.map((s) => (
-                    <div>{s}</div>
-                  ))}
-                </td>
-                <td>{advocate.yearsOfExperience}</td>
-                <td>{advocate.phoneNumber}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <AdvocateList advocates={advocates} lastAdvocateRef={lastAdvocateRef} />
+      {loading && <p className={styles.loading}>Loading...</p>}
     </main>
   );
-}
+};
+
+export default Home;
