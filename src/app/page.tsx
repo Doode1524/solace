@@ -11,6 +11,7 @@ const LIMIT = 30;
 const Home = () => {
   const [advocates, setAdvocates] = useState<IAdvocate[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [activeSearchTerm, setActiveSearchTerm] = useState<string>("")
   const [page, setPage] = useState(1);
   const [searchPage, setSearchPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -27,7 +28,7 @@ const Home = () => {
         const response = await fetch(
           `/api/advocates?page=${newPage}&limit=${LIMIT}&searchTerm=${search}`
         );
-        const { data, total } = await response.json();
+        const { data } = await response.json();
 
         if (resetPage) {
           setAdvocates(data);
@@ -39,7 +40,7 @@ const Home = () => {
             : setPage((prev) => prev + 1);
         }
 
-        setHasMore(advocates.length + data.length < total);
+        setHasMore(data.length === LIMIT);
       } catch (error) {
         console.error("Error fetching advocates:", error);
       }
@@ -59,7 +60,7 @@ const Home = () => {
 
       observer.current = new IntersectionObserver((entries) => {
         if (entries[0].isIntersecting && hasMore) {
-          fetchAdvocates(searchTerm);
+          fetchAdvocates(activeSearchTerm);
         }
       });
 
@@ -69,6 +70,7 @@ const Home = () => {
   );
 
   const handleSearchClick = () => {
+    setActiveSearchTerm(searchTerm)
     setPage(1);
     setSearchPage(1);
     setHasMore(true);

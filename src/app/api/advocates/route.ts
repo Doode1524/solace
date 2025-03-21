@@ -10,52 +10,36 @@ export async function GET(req: Request) {
     const searchTerm = url.searchParams.get("searchTerm") || "";
     const offset = (page - 1) * limit;
 
-    let query;
-
-    if (searchTerm) {
-      query = db
-        .select()
-        .from(advocates)
-        .where(
-          sql`first_name ILIKE ${"%" + searchTerm + "%"}
+    const searchFilter = searchTerm
+      ? sql`
+          first_name ILIKE ${"%" + searchTerm + "%"}
           OR last_name ILIKE ${"%" + searchTerm + "%"}
           OR city ILIKE ${"%" + searchTerm + "%"}
           OR degree ILIKE ${"%" + searchTerm + "%"}
+          OR phone_number::text ILIKE ${"%" + searchTerm + "%"}
           OR years_of_experience::text ILIKE ${"%" + searchTerm + "%"}
-          OR specialties::text ILIKE ${"%" + searchTerm + "%"}`
-        )
-        .orderBy(advocates.id)
-        .limit(limit)
-        .offset(offset);
-    } else {
-      query = db
-        .select()
-        .from(advocates)
-        .orderBy(advocates.id)
-        .limit(limit)
-        .offset(offset);
-    }
+          OR specialties::text ILIKE ${"%" + searchTerm + "%"}
+        `
+      : sql`true`;
+
+    const query = db
+      .select()
+      .from(advocates)
+      .where(searchFilter)
+      .orderBy(advocates.id)
+      .limit(limit)
+      .offset(offset);
 
     const data = await query;
 
     const countQuery = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(advocates)
-      .where(
-        searchTerm
-          ? sql`
-            first_name ILIKE ${"%" + searchTerm + "%"}
-            OR last_name ILIKE ${"%" + searchTerm + "%"}
-            OR city ILIKE ${"%" + searchTerm + "%"}
-            OR degree ILIKE ${"%" + searchTerm + "%"}
-            OR years_of_experience::text ILIKE ${"%" + searchTerm + "%"}
-            OR specialties::text ILIKE ${"%" + searchTerm + "%"}`
-          : sql`true`
-      );
+      .where(searchFilter);
 
     const total = countQuery[0]?.count || 0;
 
-    return new Response(JSON.stringify({ data, total }), {
+    return new Response(JSON.stringify({ data, total: Number(total) }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
